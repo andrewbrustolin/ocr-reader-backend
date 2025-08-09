@@ -24,6 +24,7 @@ model Document {
   mimeType     String
   size         Int
   createdAt    DateTime @default(now())
+  extractedText String?
   userId       Int
   user         User     @relation(fields: [userId], references: [id])
 }

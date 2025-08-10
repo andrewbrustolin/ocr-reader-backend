@@ -99,5 +99,13 @@ export class DocumentService {
     });
   }
 
+  async getLlmSession(documentId: number) {
+    const doc = await this.prisma.document.findUnique({
+      where: { id: documentId },
+      include: { llms: { orderBy: { createdAt: 'desc' }, take: 1 } }
+    });
+    return doc?.llms[0] || null;
+  }
+
   
 }

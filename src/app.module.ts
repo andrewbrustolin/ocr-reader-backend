@@ -8,11 +8,13 @@ import { PrismaModule } from './prisma/prisma.module';
 import { DocumentModule } from './document/document.module';
 import { OcrModule } from './ocr/ocr.module';
 import { LlmModule } from './llm/llm.module';
+import { PdfService } from './pdf/pdf.service';
+import { PdfModule } from './pdf/pdf.module';
 
 @Module({
-  imports: [AuthModule, UserModule, PrismaModule, DocumentModule, OcrModule, LlmModule],
+  imports: [AuthModule, UserModule, PrismaModule, DocumentModule, OcrModule, LlmModule, PdfModule],
   controllers: [AppController, UserController],
-  providers: [AppService],
+  providers: [AppService, PdfService],
   
 })
 export class AppModule {}

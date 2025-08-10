@@ -25,6 +25,8 @@ import { DocumentService } from './document.service';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { Response } from 'express';
+import * as PDFDocument from 'pdfkit';
+import { PdfService } from 'src/pdf/pdf.service';
 
 
 const uploadsDir = './uploads';
@@ -55,10 +57,12 @@ const diskStorageOpts = {
   },
 };
 
+
+
 @UseGuards(AuthGuard('jwt'))
 @Controller('documents')
 export class DocumentController {
-  constructor(private readonly docs: DocumentService) {}
+  constructor(private readonly docs: DocumentService, private readonly pdfService: PdfService) {}
 
   // Create (upload)
   @Post()
@@ -168,6 +172,63 @@ export class DocumentController {
         } catch (err) {
           console.error('Error in streamFile:', err);
           res.status(500).send('Error while serving the file');
+        }
+      }
+
+      @Get(':id/generate-pdf')
+      async generatePdf(
+        @Param('id', ParseIntPipe) id: number,
+        @Request() req,
+        @Res() res: Response
+      ) {
+        try {
+          // Get document and LLM session
+          const doc = await this.docs.getById(id, req.user.userId);
+          const llmSession = await this.getLlmSession(id);
+
+          const tempFilePath = path.join(uploadsDir, `temp-${Date.now()}.pdf`);
+
+
+          let preparedLlmSession;
+          if (llmSession) {
+            preparedLlmSession = {
+              questions: Array.isArray(llmSession.questions) 
+                ? llmSession.questions.filter(q => typeof q === 'string') 
+                : [],
+              answers: Array.isArray(llmSession.answers) 
+                ? llmSession.answers.filter(a => typeof a === 'string')
+                : []
+            };
+          }
+          
+          await this.pdfService.generateDocumentPdf({
+            documentPath: doc.path,
+            extractedText: doc.extractedText || undefined,
+            llmSession: preparedLlmSession, 
+            outputPath: tempFilePath
+          });
+
+          // Send PDF
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', `attachment; filename="${doc.originalName}-report.pdf"`);
+          fs.createReadStream(tempFilePath).pipe(res);
+
+          // Clean up temp file after sending
+          res.on('finish', () => {
+            fs.unlink(tempFilePath, () => {});
+          });
+          
+        } catch (err) {
+          console.error('Error generating PDF:', err);
+          throw new InternalServerErrorException('Failed to generate PDF');
+        }
+      }
+
+      private async getLlmSession(documentId: number) {
+        try {
+          return await this.docs.getLlmSession(documentId);
+        } catch {
+          return null;
         }
       }
   

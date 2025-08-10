@@ -12,7 +12,11 @@ import {
   Param,
   ParseIntPipe,
   BadRequestException,
+  Res,
+  Query,
+  NotFoundException
 } from '@nestjs/common';
+import { ServerResponse } from 'http';
 import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -20,6 +24,7 @@ import { extname } from 'path';
 import { DocumentService } from './document.service';
 import * as fs from 'fs';
 import * as path from 'path';
+import type { Response } from 'express';
 
 
 const uploadsDir = './uploads';
@@ -60,6 +65,12 @@ export class DocumentController {
   @UseInterceptors(FileInterceptor('file', diskStorageOpts))
   async create(@UploadedFile() file: Express.Multer.File, @Request() req) {
     try {
+
+      // Check if the uploaded file is empty (0KB)
+      if (file.size === 0) {
+        throw new BadRequestException('Uploaded file is empty');
+      }
+
       const doc = await this.docs.createDocument({
         userId: req.user.userId,
         filename: file.filename,
@@ -112,6 +123,53 @@ export class DocumentController {
         throw new InternalServerErrorException(error.message || 'Unexpected error occurred');
       }
     }
+
+    // GET /documents/:id/file?download=1  -> attachment
+    // GET /documents/:id/file             -> inline preview
+    @Get(':id/file')
+      async streamFile(
+        @Param('id', ParseIntPipe) id: number,
+        @Request() req,
+        @Res() res: Response,
+        @Query('download') download?: string,
+      ) {
+        try {
+          const doc = await this.docs.getById(id, req.user.userId);
+
+          if (!fs.existsSync(doc.path)) {
+            throw new NotFoundException('File not found on server');
+          }
+
+          const stats = fs.statSync(doc.path);
+          if (stats.size === 0) {
+            throw new InternalServerErrorException('File is empty and cannot be served');
+          }
+
+          const stream = fs.createReadStream(doc.path);
+          
+          // Set appropriate headers
+          res.setHeader('Content-Type', doc.mimeType);
+          const disposition = String(download) === '1' ? 'attachment' : 'inline';
+          res.setHeader('Content-Disposition', `${disposition}; filename="${doc.filename}"`);
+          res.setHeader('Content-Length', stats.size.toString());
+
+          // Pipe stream directly to response
+          stream.pipe(res);
+
+          stream.on('end', () => {
+            console.log('Stream finished successfully');
+          });
+
+          stream.on('error', (err) => {
+            console.error('Error streaming file:', err);
+            res.status(500).send('Error streaming file');
+          });
+
+        } catch (err) {
+          console.error('Error in streamFile:', err);
+          res.status(500).send('Error while serving the file');
+        }
+      }
   
 
 }

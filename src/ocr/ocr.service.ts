@@ -6,28 +6,37 @@ import { OcrProgressService } from './ocr-progress.service';
 
 @Injectable()
 export class OcrService {
-  constructor(private readonly documents: DocumentService, private readonly progress: OcrProgressService,) {}
+  constructor(private readonly documents: DocumentService, public readonly progress: OcrProgressService) {}
 
   async extractText(documentId: number, userId: number) {
-    const doc = await this.documents.getById(documentId, userId);
+  const doc = await this.documents.getById(documentId, userId);
 
-    if (!fs.existsSync(doc.path)) {
-      throw new InternalServerErrorException('File not found on server');
-    }
+  // Check if the file exists
+  if (!fs.existsSync(doc.path)) {
+    throw new InternalServerErrorException('File not found on server');
+  }
 
-    try {
-      const { data } = await Tesseract.recognize(doc.path, 'eng', {
-        logger: (m) => console.log(m), 
-      });
+  // Check if the file is empty (0KB)
+  const stats = fs.statSync(doc.path);
+  if (stats.size === 0) {
+    throw new InternalServerErrorException('File is empty and cannot be processed');
+  }
 
-      await this.documents.updateExtractedText(doc.id, data.text);
+  try {
+    const { data } = await Tesseract.recognize(doc.path, 'eng', {
+      logger: (m) => console.log(m), // Optional: Log progress
+    });
 
-      return {
-        message: 'OCR completed successfully',
-        documentId: doc.id,
-        extractedText: data.text,
-      };
-    } catch (error: any) {
+    await this.documents.updateExtractedText(doc.id, data.text);
+
+    return {
+      message: 'OCR completed successfully',
+      documentId: doc.id,
+      extractedText: data.text,
+    };
+  } catch (error: any) {
+      // Log error and throw a more specific exception
+      console.error(`OCR failed for document ${documentId}:`, error.message);
       throw new InternalServerErrorException(`OCR processing failed: ${error.message}`);
     }
   }
@@ -45,6 +54,12 @@ export class OcrService {
       throw new InternalServerErrorException('File not found on server');
     }
 
+    // Check if the file is empty (0KB)
+    const stats = fs.statSync(doc.path);
+    if (stats.size === 0) {
+      throw new InternalServerErrorException('File is empty and cannot be processed');
+    }
+
     // Mark queued and immediately start in background
     this.progress.set(documentId, { status: 'queued', progress: 0, message: 'Queued' });
 
@@ -54,7 +69,6 @@ export class OcrService {
 
         const { data } = await Tesseract.recognize(doc.path, 'eng', {
           logger: (m) => {
-            // m = { status: 'recognizing text', progress: 0.42 } etc.
             const pct = Math.round((m.progress ?? 0) * 100);
             this.progress.set(documentId, {
               status: 'running',
@@ -67,6 +81,8 @@ export class OcrService {
         await this.documents.updateExtractedText(documentId, data.text);
         this.progress.set(documentId, { status: 'completed', progress: 100, message: 'Done' });
       } catch (err: any) {
+        
+        console.error(`OCR failed for document ${documentId}:`, err.message);
         this.progress.set(documentId, { status: 'failed', error: err?.message || 'OCR failed' });
       }
     })();

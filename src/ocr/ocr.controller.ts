@@ -9,6 +9,7 @@ import {
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  NotFoundException,
   HttpCode,
   HttpStatus,
   Query,
@@ -102,9 +103,25 @@ export class OcrController {
         };
     }
 
-  // Poll progress
   @Get(':id/ocr/status')
-  async status(@Param('id', ParseIntPipe) id: number) {
-    return this.ocr.status(id);
+  async status(@Param('id', ParseIntPipe) id: number, @Request() req: any) {
+    const doc = await this.docs.getById(id, req.user.userId);
+    
+    if (!doc) {
+      throw new NotFoundException('Document not found');
+    }
+
+    // Get progress from the progress service
+    const progress = this.ocr.progress.get(id);
+    
+
+    return {
+      status: progress.status,
+      //...(progress.status === 'completed' ? { extractedText: (await this.docs.getById(id, req.user.userId)).extractedText } : {}),
+      extractedText: (await this.docs.getById(id, req.user.userId)).extractedText || '',
+      progress: progress.progress,
+      message: progress.message,
+      startedAt: doc.createdAt, // Include the created timestamp (or use startedAt if available)
+    };
   }
 }

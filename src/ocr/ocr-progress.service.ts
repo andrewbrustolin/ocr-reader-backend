@@ -25,12 +25,16 @@ export class OcrProgressService {
       ...patch,
       updatedAt: new Date().toISOString(),
     };
+
     if (patch.status === 'queued' || patch.status === 'running') {
       next.startedAt = next.startedAt ?? new Date().toISOString();
     }
+
     if (patch.status === 'completed' || patch.status === 'failed') {
       next.finishedAt = new Date().toISOString();
     }
+
+    // Set the progress in the service
     this.map.set(id, next);
   }
 

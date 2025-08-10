@@ -7,9 +7,10 @@ import { UserModule } from './user/user.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { DocumentModule } from './document/document.module';
 import { OcrModule } from './ocr/ocr.module';
+import { LlmModule } from './llm/llm.module';
 
 @Module({
-  imports: [AuthModule, UserModule, PrismaModule, DocumentModule, OcrModule],
+  imports: [AuthModule, UserModule, PrismaModule, DocumentModule, OcrModule, LlmModule],
   controllers: [AppController, UserController],
   providers: [AppService],
   

@@ -91,10 +91,52 @@ export class LlmController {
     }
 
     try {
-      // Add the new question to the existing LLM session
+      const session = await this.prisma.lLM.findUnique({
+        where: { id: parseInt(llmId) },
+      });
+
+      if (!session) {
+        throw new BadRequestException('LLM session not found');
+      }
+
+      // Type-safe parsing of questions and answers
+      const parseQuestions = (): string[] => {
+        if (session.questions === null) return [];
+        if (Array.isArray(session.questions)) return session.questions as string[];
+        try {
+          const parsed = JSON.parse(session.questions as string);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      };
+
+      const parseAnswers = (): string[] => {
+        if (session.answers === null) return [];
+        if (Array.isArray(session.answers)) return session.answers as string[];
+        try {
+          const parsed = JSON.parse(session.answers as string);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      };
+
+      const questions = parseQuestions();
+      const answers = parseAnswers();
+
+      // Build context from last 3 Q&A pairs
+      const lastPairs = Math.min(questions.length, 3);
+      let contextPrompt = "Context:\n";
+      for (let i = questions.length - lastPairs; i < questions.length; i++) {
+        contextPrompt += `\nQ: ${questions[i]}\nA: ${answers[i] || '[No answer]'}\n`;
+      }
+      contextPrompt += `\nNew question: ${body.text}`;
+
       const updatedSession = await this.llmService.addToLlmSession(
         session.id,
-        body.text
+        body.text,
+        contextPrompt
       );
 
       return { llmSession: updatedSession };

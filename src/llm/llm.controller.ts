@@ -62,9 +62,10 @@ export class LlmController {
   }
 
   // Endpoint for further user queries
-  @Post('answer')
+  @Post(':llmId/answer')
   async answer(
     @Param('documentId') documentId: string,
+    @Param('llmId') llmId: string,
     @Body() body: { text: string }
   ) {
     if (!body.text) {
@@ -80,14 +81,23 @@ export class LlmController {
       throw new BadRequestException('Document not found');
     }
 
+    // Verify LLM session exists
+    const session = await this.prisma.lLM.findUnique({
+      where: { id: parseInt(llmId) },
+    });
+
+    if (!session) {
+      throw new BadRequestException('LLM session not found');
+    }
+
     try {
       // Add the new question to the existing LLM session
-      const llmSession = await this.llmService.addToLlmSession(
-        document.id,
+      const updatedSession = await this.llmService.addToLlmSession(
+        session.id,
         body.text
       );
 
-      return { llmSession };
+      return { llmSession: updatedSession };
     } catch (error) {
       throw new BadRequestException('Error generating answer');
     }

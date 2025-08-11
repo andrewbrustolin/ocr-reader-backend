@@ -13,11 +13,7 @@ import { PdfModule } from './pdf/pdf.module';
 import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  imports: [AuthModule, UserModule, PrismaModule, DocumentModule, OcrModule, LlmModule, PdfModule, 
-    ConfigModule.forRoot({
-      envFilePath: '.env.production', 
-      isGlobal: true,
-    }),],
+  imports: [AuthModule, UserModule, PrismaModule, DocumentModule, OcrModule, LlmModule, PdfModule], 
   controllers: [AppController, UserController],
   providers: [AppService, PdfService],
   

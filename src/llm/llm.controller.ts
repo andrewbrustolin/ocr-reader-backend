@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Param, BadRequestException, Get, UseGuards, NotFoundException } from '@nestjs/common';
+import { Controller, Post, Body, Param, BadRequestException, Get, UseGuards, NotFoundException, Request, HttpException } from '@nestjs/common';
 import { LlmService } from './llm.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthGuard } from '@nestjs/passport';
@@ -15,11 +15,15 @@ export class LlmController {
   @Post('initialize')
   async initialize(
     @Param('documentId') documentId: string,
-    @Body() body: { text: string }
+    @Body() body: { text: string },
+    @Request() req: Request
   ) {
     if (!body.text) {
       throw new BadRequestException('Text is required for initialization');
     }
+
+    const apiKey = req.headers['x-openai-api-key'] as string;
+    if (!apiKey) throw new BadRequestException('OpenAI API key is required');
 
     // Verify document exists
     const document = await this.prisma.document.findUnique({
@@ -35,12 +39,28 @@ export class LlmController {
       const llmSession = await this.llmService.createLlmSession(
         document.userId,
         parseInt(documentId),
-        body.text
+        body.text,
+        apiKey
       );
 
       return { llmSession };
     } catch (error) {
-      throw new BadRequestException('Error initializing LLM session');
+        let statusCode = 400;
+        let errorMessage = 'Error initializing LLM session';
+        let solution = 'An error has occurred';
+
+        if (error.message.includes('Invalid API key')) {
+          statusCode = 401;
+          errorMessage = 'Invalid API key provided';
+          solution = 'Verify your API key at platform.openai.com/account/api-keys';
+        }
+
+        throw new HttpException({
+          statusCode,
+          error: errorMessage,
+          solution
+        }, statusCode);
+      
     }
   }
 
@@ -66,11 +86,15 @@ export class LlmController {
   async answer(
     @Param('documentId') documentId: string,
     @Param('llmId') llmId: string,
-    @Body() body: { text: string }
+    @Body() body: { text: string },
+    @Request() req: Request
   ) {
     if (!body.text) {
       throw new BadRequestException('Text is required for answer');
     }
+
+    const apiKey = req.headers['x-openai-api-key'] as string;
+    if (!apiKey) throw new BadRequestException('OpenAI API key is required');
 
     // Verify document exists
     const document = await this.prisma.document.findUnique({
@@ -136,12 +160,28 @@ export class LlmController {
       const updatedSession = await this.llmService.addToLlmSession(
         session.id,
         body.text,
-        contextPrompt
+        contextPrompt,
+        apiKey
       );
 
       return { llmSession: updatedSession };
     } catch (error) {
-      throw new BadRequestException('Error generating answer');
+        if (error.message.includes('Invalid OpenAI API key')) {
+          throw new BadRequestException({
+            message: 'Invalid API Key',
+            details: 'The provided OpenAI API key is invalid',
+            statusCode: 401
+          });
+        }
+        if (error.message.includes('You exceeded your current quota')) {
+          throw new BadRequestException({
+            message: 'You exceeded your current quota',
+            details: 'You exceeded your current quota',
+            statusCode: 429
+          });
+        }
+        throw new BadRequestException(error.message || 'Error generating answer');
     }
   }
+  
 }

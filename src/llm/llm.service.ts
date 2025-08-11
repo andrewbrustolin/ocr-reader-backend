@@ -2,16 +2,37 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { OpenAI } from 'openai';
 import { ChatCompletionMessageParam } from 'openai/resources';
+import { OpenAIError } from 'openai/error';
 
 @Injectable()
 export class LlmService {
-  private openai: OpenAI;
+
+  private openai: OpenAI | null = null;
 
   constructor(private prisma: PrismaService) {
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
   }
+
+  private initializeOpenAI(apiKey: string) {
+    if (!apiKey) {
+      throw new Error('OpenAI API key is required');
+    }
+    this.openai = new OpenAI({ apiKey });
+  }
+
+  private ensureOpenAIInitialized(apiKey: string) {
+    if (!this.openai) {
+      this.initializeOpenAI(apiKey);
+    } else if (this.openai.apiKey !== apiKey) {
+      // Update API key if different from current
+      this.openai.apiKey = apiKey;
+    }
+  }
+
+  private isOpenAIError(error: any): error is OpenAIError & { error?: { code?: string } } {
+    return error instanceof OpenAIError;
+  }
+
+  
 
   // Helper to safely parse JSON array or return empty array
   private parseJsonArray(value: any): string[] {
@@ -25,8 +46,8 @@ export class LlmService {
   }
 
   // Create the LLM session, including the extracted text as the first question
-  async createLlmSession(userId: number, documentId: number, extractedText: string) {
-    const answer = await this.generateAnswer(extractedText);
+  async createLlmSession(userId: number, documentId: number, extractedText: string, apiKey: string) {
+    const answer = await this.generateAnswer(extractedText, [], apiKey);
 
     return this.prisma.lLM.create({
       data: {
@@ -38,67 +59,87 @@ export class LlmService {
     });
   }
 
-  async addToLlmSession(llmId: number, originalQuestion: string, contextQuestion?: string) {
-  const session = await this.prisma.lLM.findUnique({ where: { id: llmId } });
+  async addToLlmSession(llmId: number, originalQuestion: string, contextQuestion: string | undefined, apiKey: string) {
 
-  if (!session) {
-    throw new Error('LLM session not found');
-  }
-
-  // Safely parse questions and answers
-  const questions = this.parseJsonArray(session.questions);
-  const answers = this.parseJsonArray(session.answers);
-
-  // Build conversation history
-  const conversationHistory: ChatCompletionMessageParam[] = [];
-  for (let i = 0; i < questions.length; i++) {
-    conversationHistory.push({
-      role: "user",
-      content: questions[i]
-    });
-    if (answers[i]) {
-      conversationHistory.push({
-        role: "assistant",
-        content: answers[i]
-      });
+    this.ensureOpenAIInitialized(apiKey);
+    const session = await this.prisma.lLM.findUnique({ where: { id: llmId } });
+    if (!session) {
+        throw new Error('LLM session not found');
     }
-  }
 
-  // Get last 5 Q&A pairs (10 messages total)
-  const recentHistory = conversationHistory.slice(-10);
+    // Safely parse questions and answers
+    const questions = this.parseJsonArray(session.questions);
+    const answers = this.parseJsonArray(session.answers);
 
-  // Use context-enhanced question if provided, otherwise use original
-  const questionToAnswer = contextQuestion || originalQuestion;
+    // Build conversation history
+    const conversationHistory: ChatCompletionMessageParam[] = [];
+    for (let i = 0; i < questions.length; i++) {
+        conversationHistory.push({
+        role: "user",
+        content: questions[i]
+        });
+        if (answers[i]) {
+        conversationHistory.push({
+            role: "assistant",
+            content: answers[i]
+        });
+        }
+    }
 
-  const answer = await this.generateAnswer(questionToAnswer, recentHistory);
+    // Get last 5 Q&A pairs (10 messages total)
+    const recentHistory = conversationHistory.slice(-10);
 
-  return this.prisma.lLM.update({
-    where: { id: llmId },
-    data: {
-      questions: [...questions, originalQuestion], // Store original question
-      answers: [...answers, answer],
-    },
-  });
+    // Use context-enhanced question if provided, otherwise use original
+    const questionToAnswer = contextQuestion || originalQuestion;
+
+    const answer = await this.generateAnswer(questionToAnswer, recentHistory, apiKey);
+
+    return this.prisma.lLM.update({
+        where: { id: llmId },
+        data: {
+        questions: [...questions, originalQuestion], // Store original question
+        answers: [...answers, answer],
+        },
+    });
 }
 
   // Call OpenAI's API to generate an answer based on the given text
-  async generateAnswer(text: string, conversationHistory: ChatCompletionMessageParam[] = []): Promise<string> {
-    const messages: ChatCompletionMessageParam[] = [
+  async generateAnswer(
+    text: string, 
+    conversationHistory: ChatCompletionMessageParam[] = [], 
+    apiKey: string
+  ): Promise<string> {
+    try {
+      this.ensureOpenAIInitialized(apiKey);
+
+      const messages: ChatCompletionMessageParam[] = [
         {
-        role: "system",
-        content: "You are a helpful assistant. When answering questions, consider the full conversation history where relevant."
+          role: "system",
+          content: "You are a helpful assistant. When answering questions, consider the full conversation history where relevant."
         },
         ...conversationHistory,
         { role: "user", content: text }
-    ];
+      ];
 
-    const response = await this.openai.chat.completions.create({
+      const response = await this.openai!.chat.completions.create({
         model: 'gpt-4',
         messages: messages,
         temperature: 0.7,
-    });
+      });
 
-    return response.choices[0]?.message?.content || '';
+      return response.choices[0]?.message?.content || '';
+    } catch (error: unknown) {
+      if (this.isOpenAIError(error)) {
+        // Check error message for common patterns
+        if (error.message.includes('Incorrect API key provided')) {
+          throw new Error('Invalid OpenAI API key provided');
+        }
+        if (error.message.includes('rate limit')) {
+          throw new Error('OpenAI API rate limit exceeded');
+        }
+        throw new Error(`OpenAI API error: ${error.message}`);
+      }
+      throw error; 
     }
+  }
 }
-//messages: [{ role: 'user', content: text }],

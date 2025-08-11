@@ -10,9 +10,14 @@ import { OcrModule } from './ocr/ocr.module';
 import { LlmModule } from './llm/llm.module';
 import { PdfService } from './pdf/pdf.service';
 import { PdfModule } from './pdf/pdf.module';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  imports: [AuthModule, UserModule, PrismaModule, DocumentModule, OcrModule, LlmModule, PdfModule],
+  imports: [AuthModule, UserModule, PrismaModule, DocumentModule, OcrModule, LlmModule, PdfModule, 
+    ConfigModule.forRoot({
+      envFilePath: '.env.production', 
+      isGlobal: true,
+    }),],
   controllers: [AppController, UserController],
   providers: [AppService, PdfService],
   

@@ -62,3 +62,6 @@ prisma/dev.db
 
 #saved images
 uploads
+
+
+*.db

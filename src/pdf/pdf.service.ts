@@ -57,32 +57,42 @@ export class PdfService {
   }
 
   private addDocumentImagePage(pdfDoc: PDFKit.PDFDocument, imagePath: string) {
-    // Header
+  try {
     pdfDoc.font('Helvetica-Bold')
       .fontSize(18)
       .text('Original Document', { align: 'center' });
     
     pdfDoc.moveDown(0.5);
     
-    // Image with border
     const imageWidth = 500;
     const imageHeight = 400;
     const xPos = (pdfDoc.page.width - imageWidth) / 2;
     
-    // Draw border
     pdfDoc.rect(xPos - 5, pdfDoc.y, imageWidth + 10, imageHeight + 10)
       .stroke('#cccccc');
     
-    // Add image centered
-    pdfDoc.image(imagePath, xPos, pdfDoc.y + 5, {
-      width: imageWidth,
-      height: imageHeight,
-      align: 'center',
-      valign: 'center'
-    });
+    // Add try-catch for image loading
+    try {
+      pdfDoc.image(imagePath, xPos, pdfDoc.y + 5, {
+        width: imageWidth,
+        height: imageHeight,
+        align: 'center',
+        valign: 'center'
+      });
+    } catch (imageError) {
+      console.error('Error loading image:', imageError);
+      pdfDoc.text('(Could not load original document image)', {
+        width: imageWidth,
+        align: 'center'
+      });
+    }
     
-    pdfDoc.moveDown(imageHeight / 72 + 2); // Convert points to inches-ish
+    pdfDoc.moveDown(imageHeight / 72 + 2);
+  } catch (err) {
+    console.error('Error adding document image page:', err);
+    throw err;
   }
+}
 
   private addOcrTextPage(pdfDoc: PDFKit.PDFDocument, extractedText: string) {
     // Header

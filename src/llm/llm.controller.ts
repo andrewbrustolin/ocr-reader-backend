@@ -45,21 +45,21 @@ export class LlmController {
 
       return { llmSession };
     } catch (error) {
-        let statusCode = 400;
-        let errorMessage = 'Error initializing LLM session';
-        let solution = 'An error has occurred';
-
-        if (error.message.includes('Invalid API key')) {
-          statusCode = 401;
-          errorMessage = 'Invalid API key provided';
-          solution = 'Verify your API key at platform.openai.com/account/api-keys';
+        if (error.message.includes('Invalid OpenAI API key')) {
+          throw new BadRequestException({
+            message: 'Invalid API Key',
+            details: 'The provided OpenAI API key is invalid',
+            statusCode: 401
+          });
         }
-
-        throw new HttpException({
-          statusCode,
-          error: errorMessage,
-          solution
-        }, statusCode);
+        if (error.message.includes('You exceeded your current quota')) {
+          throw new BadRequestException({
+            message: 'You exceeded your current quota',
+            details: 'You exceeded your current quota',
+            statusCode: 429
+          });
+        }
+        throw new BadRequestException(error.message || 'Error generating answer');
       
     }
   }

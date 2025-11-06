@@ -1,7 +1,7 @@
 INSTRUCTIONS TO RUN THE BACKEND IN DEVELOPMENT MODE
 
 - install node/npm on your machine
-- clone the project: git clone https://github.com/andrewbrustolin/paggo-case-backend.git
+- clone the project: git clone https://github.com/andrewbrustolin/ocr-reader-backend.git
 - move to the root project directory
 - create .env in your root project directory
   - add the following variables to your .env:
@@ -15,7 +15,7 @@ INSTRUCTIONS TO RUN THE BACKEND IN DEVELOPMENT MODE
 - start the backend with: npm run start
 
 Now you can start the frontend on a port different from the port in your backend's .env file
-This application's frontend is located here: https://github.com/andrewbrustolin/paggo-case-frontend
+This application's frontend is located here: https://github.com/andrewbrustolin/ocr-reader-frontend
 
 
 
